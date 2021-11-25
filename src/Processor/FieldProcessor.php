@@ -43,27 +43,31 @@ class FieldProcessor implements ProcessorInterface
     public function process(EloquentModel $model, Config $config)
     {
         $schemaManager = $this->databaseManager->connection($config->get('connection'))->getDoctrineSchemaManager();
-        $prefix        = $this->databaseManager->connection($config->get('connection'))->getTablePrefix();
+        $prefix = $this->databaseManager->connection($config->get('connection'))->getTablePrefix();
 
-        $tableDetails       = $schemaManager->listTableDetails($prefix . $model->getTableName());
+        $tableDetails = $schemaManager->listTableDetails($prefix . $model->getTableName());
         $primaryColumnNames = $tableDetails->getPrimaryKey() ? $tableDetails->getPrimaryKey()->getColumns() : [];
 
+        $casts = [];
         $columnNames = [];
         foreach ($tableDetails->getColumns() as $column) {
-            $model->addProperty(new VirtualPropertyModel(
-                $column->getName(),
-                $this->typeRegistry->resolveType($column->getType()->getName())
-            ));
+            $model->addProperty(new VirtualPropertyModel($column->getName(),
+                $this->typeRegistry->resolveType($column->getType()->getName())));
+            if ($column->getType()->getName() === 'json') {
+                $casts[$column->getName()] = 'array';
+            }
 
             if (!in_array($column->getName(), $primaryColumnNames)) {
                 $columnNames[] = $column->getName();
             }
         }
 
+        if (count($casts) > 0) {
+            $model->addProperty(new PropertyModel('casts', 'public', $casts));
+        }
+
         $fillableProperty = new PropertyModel('fillable');
-        $fillableProperty->setAccess('protected')
-            ->setValue($columnNames)
-            ->setDocBlock(new DocBlockModel('@var array'));
+        $fillableProperty->setAccess('protected')->setValue($columnNames)->setDocBlock(new DocBlockModel('@var array'));
         $model->addProperty($fillableProperty);
 
         return $this;

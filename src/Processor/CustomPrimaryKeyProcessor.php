@@ -3,7 +3,9 @@
 namespace Krlove\EloquentModelGenerator\Processor;
 
 use Illuminate\Database\DatabaseManager;
+use Krlove\CodeGenerator\Model\ArgumentModel;
 use Krlove\CodeGenerator\Model\DocBlockModel;
+use Krlove\CodeGenerator\Model\MethodModel;
 use Krlove\CodeGenerator\Model\PropertyModel;
 use Krlove\EloquentModelGenerator\Config;
 use Krlove\EloquentModelGenerator\Model\EloquentModel;
@@ -42,7 +44,7 @@ class CustomPrimaryKeyProcessor implements ProcessorInterface
     public function process(EloquentModel $model, Config $config)
     {
         $schemaManager = $this->databaseManager->connection($config->get('connection'))->getDoctrineSchemaManager();
-        $prefix        = $this->databaseManager->connection($config->get('connection'))->getTablePrefix();
+        $prefix = $this->databaseManager->connection($config->get('connection'))->getTablePrefix();
 
         $tableDetails = $schemaManager->listTableDetails($prefix . $model->getTableName());
         $primaryKey = $tableDetails->getPrimaryKey();
@@ -51,37 +53,44 @@ class CustomPrimaryKeyProcessor implements ProcessorInterface
         }
 
         $columns = $primaryKey->getColumns();
-        if (count($columns) !== 1) {
+
+        if (count($columns) > 1) {
+            $primaryKeyProperty = new PropertyModel('primaryKey', 'protected', $columns);
+            $model->addProperty($primaryKeyProperty);
+
+            $method = new MethodModel('setKeysForSelectQuery');
+            $method->addArgument(new ArgumentModel('query'));
+            $method->setBody('foreach ($this->primaryKey as $key) {
+            $query->where($key, \'=\', $this->getAttribute($key));
+        }
+        return $query;');
+            $model->addMethod($method);
+
+            $autoincrementProperty = new PropertyModel('incrementing', 'public', false);
+            $autoincrementProperty->setDocBlock(new DocBlockModel('Indicates if the IDs are auto-incrementing.', '', '@var bool'));
+            $model->addProperty($autoincrementProperty);
+
             return;
         }
 
         $column = $tableDetails->getColumn($columns[0]);
         if ($column->getName() !== 'id') {
             $primaryKeyProperty = new PropertyModel('primaryKey', 'protected', $column->getName());
-            $primaryKeyProperty->setDocBlock(
-                new DocBlockModel('The primary key for the model.', '', '@var string')
-            );
+            $primaryKeyProperty->setDocBlock(new DocBlockModel('The primary key for the model.', '', '@var string'));
             $model->addProperty($primaryKeyProperty);
         }
         if ($column->getType()->getName() !== 'integer') {
-            $keyTypeProperty = new PropertyModel(
-                'keyType',
-                'protected',
-                $this->typeRegistry->resolveType($column->getType()->getName())
-            );
-            $keyTypeProperty->setDocBlock(
-                new DocBlockModel('The "type" of the auto-incrementing ID.', '', '@var string')
-            );
+            $keyTypeProperty = new PropertyModel('keyType', 'protected', $this->typeRegistry->resolveType($column->getType()->getName()));
+            $keyTypeProperty->setDocBlock(new DocBlockModel('The "type" of the auto-incrementing ID.', '', '@var string'));
             $model->addProperty($keyTypeProperty);
         }
         if ($column->getAutoincrement() !== true) {
             $autoincrementProperty = new PropertyModel('incrementing', 'public', false);
-            $autoincrementProperty->setDocBlock(
-                new DocBlockModel('Indicates if the IDs are auto-incrementing.', '', '@var bool')
-            );
+            $autoincrementProperty->setDocBlock(new DocBlockModel('Indicates if the IDs are auto-incrementing.', '', '@var bool'));
             $model->addProperty($autoincrementProperty);
         }
     }
+
 
     /**
      * @inheritdoc

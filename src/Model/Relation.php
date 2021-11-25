@@ -61,7 +61,7 @@ abstract class Relation
      */
     public function getForeignColumnName()
     {
-        return $this->foreignColumnName;
+        return str_replace('"', '', $this->foreignColumnName);
     }
 
     /**
@@ -81,7 +81,7 @@ abstract class Relation
      */
     public function getLocalColumnName()
     {
-        return $this->localColumnName;
+        return str_replace('"', '', $this->localColumnName);
     }
 
     /**
